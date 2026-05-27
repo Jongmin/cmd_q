@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmd_q"
+version = "0.1.0"
+description = "SQLite-backed command queue for multi-agent collaboration"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "openclaw", email = "noreply@openclaw.dev" },
+]
+license = { text = "MIT" }
+keywords = ["agent", "queue", "sqlite", "multi-agent", "ipc"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/Jongmin/cmd_q"
+Repository = "https://github.com/Jongmin/cmd_q.git"
+
+[project.scripts]
+cmd_q = "cmd_q.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cmd_q*"]
+exclude = ["tests*"]
