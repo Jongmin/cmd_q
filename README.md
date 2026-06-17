@@ -2,6 +2,12 @@
 
 SQLite 기반 에이전트 간 명령 큐. 여러 에이전트 세션이 SQLite 파일을 통해 명령을 주고받는다. WAL 모드로 동시 읽기/쓰기 안전.
 
+멀티 에이전트 협업을 위한 3개 축으로 구성된다:
+
+1. **명령 큐** — 에이전트 간 명령 전달 (이 README) · SQLite + WAL
+2. **워킹모드** — 큐를 자율 반복 처리하고 큐가 비면 종료 → [docs/working-mode.md](docs/working-mode.md)
+3. **에이전트 메모리** — 세션 간 유지되는 정체성·역할·선호 → [docs/agent-memory.md](docs/agent-memory.md)
+
 ## 설치
 
 ```bash
@@ -118,6 +124,20 @@ cmd_q archive 30            # 30일 지난 완료 건 정리
 - 다른 에이전트에게 작업 요청 시 `q.send()` 사용
 - 검토/검증 완료 후 반드시 `q.complete()` 호출
 - "X에게 Y 요청" 지시를 받으면 → 방금 한 작업을 정리해 `q.send()` 의 body 에 포함
+
+## 워킹모드와 에이전트 메모리
+
+명령 큐는 전달 메커니즘일 뿐이다. 실제 멀티 에이전트 운영은 두 문서가 함께 정의한다:
+
+- **[docs/working-mode.md](docs/working-mode.md)** — 큐 자율 처리 루프, 세션 시작 프로토콜,
+  상태 전이 함정(`start` 없이 `complete` 하면 무음 NOOP), 큐 잔량 기반 자동 종료.
+- **[docs/agent-memory.md](docs/agent-memory.md)** — 세션 간 유지 메모리의 파일 구조,
+  frontmatter 스키마, 4가지 타입(user / feedback / project / reference), `MEMORY.md` 인덱스,
+  역할 기반 에이전트 정체성(개발 / 검증 분리 패턴).
+
+에이전트 정체성 템플릿:
+[examples/agents/developer-agent.md](examples/agents/developer-agent.md) ·
+[examples/agents/verifier-agent.md](examples/agents/verifier-agent.md)
 
 ## 라이선스
 
