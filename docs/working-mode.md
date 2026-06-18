@@ -1,29 +1,27 @@
-# 워킹모드 (Working Mode)
+# Working Mode
 
-워킹모드는 에이전트가 자기 앞으로 온 명령 큐를 **자율적으로 반복 처리**하는 운영 방식이다.
-사용자가 매 명령을 지시하지 않아도, 에이전트가 큐를 폴링하며 `pending` 명령을 우선순위 순으로
-처리하고, 큐가 비면 스스로 종료한다.
+Working mode is an operating model in which an agent **autonomously and repeatedly processes** the command queue addressed to it.
+Without the user issuing every command, the agent polls the queue, processes `pending` commands in priority order, and stops on its own when the queue is empty.
 
-명령 큐가 "지금 무엇을 할지"를 다룬다면, 워킹모드는 "그것을 어떤 절차로 끝까지 처리하는가"를 다룬다.
+If the command queue is about "what to do right now," working mode is about "by what procedure to carry it through to completion."
 
 ---
 
-## 세션 시작 프로토콜
+## Session Start Protocol
 
-워킹모드 진입 시(또는 일반 세션 시작 시) 순서:
+The order when entering working mode (or when starting a regular session):
 
-1. **전역 메모리 확인** — 프로젝트 메모리 인덱스(`MEMORY.md`) 로드, 관련 메모리 참조
+1. **Check global memory** — Load the project memory index (`MEMORY.md`) and reference relevant memories.
    → [agent-memory.md](agent-memory.md)
-2. **명령 큐 확인** — `q.check()` 또는 `cmd_q check <agent>` 로 내 `pending` / `in_progress` 명령 확인
-3. **우선순위 처리** — 사용자의 직접 지시가 있으면 최우선. 없으면 큐의 `pending` 명령을
-   priority(`critical` > `high` > `medium` > `low`) 순으로 처리
-4. **완료 보고** — 각 명령 완료 시 결과를 명시적으로 기록(`q.complete`)하고 사용자에게 보고
+2. **Check the command queue** — Use `q.check()` or `cmd_q check <agent>` to check my `pending` / `in_progress` commands.
+3. **Process by priority** — A direct instruction from the user takes top priority. Otherwise, process the `pending` commands in the queue in priority order (`critical` > `high` > `medium` > `low`).
+4. **Report completion** — On completing each command, explicitly record the result (`q.complete`) and report to the user.
 
 ---
 
-## 명령 처리 루프 (1건)
+## Command Processing Loop (single command)
 
-각 명령은 반드시 상태 전이를 거친다:
+Each command must go through the status transitions:
 
 ```
 pending  ──start()──▶  in_progress  ──complete()──▶  completed
@@ -31,22 +29,22 @@ pending  ──start()──▶  in_progress  ──complete()──▶  complet
 
 ```python
 q.start(cmd_id)      # pending → in_progress
-# ... 작업 수행: 코드 작성, 테스트 실행, 결과 측정 ...
+# ... do the work: write code, run tests, measure results ...
 q.complete(cmd_id, summary=..., detail=..., findings=[...])
 ```
 
-> ⚠️ **상태 전이 함정.** `complete()` 의 UPDATE 는 `WHERE status='in_progress'` 조건을 쓴다.
-> `start()` 로 `in_progress` 전이를 거치지 않으면 `complete()` 의 상태 변경이 **무음 NOOP** 된다
-> (`results` 행은 들어가지만 `commands.status` 는 `pending` 으로 남는다). 수신한 명령을 마감할 때
-> 흔히 빠뜨린다 — 반드시 **start → 작업 → complete** 순서.
+> ⚠️ **Status transition pitfall.** The UPDATE in `complete()` uses the `WHERE status='in_progress'` condition.
+> If you do not go through the `in_progress` transition via `start()`, the status change in `complete()` becomes a **silent NOOP**
+> (the `results` row is inserted, but `commands.status` remains `pending`). This is commonly missed when closing out a received command —
+> always follow the order **start → work → complete**.
 
 ---
 
-## 자율 루프와 자동 종료
+## Autonomous Loop and Automatic Stop
 
-워킹모드를 크론/주기 루프로 돌릴 때(예: 큐 DB 를 주기적으로 폴링), **종료 조건**이 핵심이다.
+When running working mode as a cron/periodic loop (e.g., periodically polling the queue DB), the **stop condition** is key.
 
-매 tick 마다 워커 에이전트들의 미완료 명령 수를 확인한다:
+On every tick, check the number of incomplete commands of the worker agents:
 
 ```sql
 SELECT COUNT(*) FROM commands
@@ -54,29 +52,25 @@ WHERE to_agent IN (<worker agents>)
   AND status IN ('pending','in_progress');
 ```
 
-- **0 이면** → 모든 워커의 큐가 비었으므로 루프를 **자동 종료**하고 사용자에게 보고한다.
-- **0 보다 크면** → 루프 유지. 내 앞 큐가 비어 있어도 상대 워커에게 일이 남아 있으면
-  후속 명령(검증 요청, 수정 요청 등)이 올 수 있으므로 계속 대기한다.
+- **If 0** → all workers' queues are empty, so **automatically stop** the loop and report to the user.
+- **If greater than 0** → keep the loop running. Even if my own queue is empty, as long as the other worker still has work left, follow-up commands (verification requests, fix requests, etc.) may arrive, so keep waiting.
 
-### 설계 노트
+### Design Notes
 
-- **단순 무동작 카운터("N회 연속 idle 시 정지")는 권장하지 않는다.** 워커 A가 워커 B의 구현
-  완료를 기다리는 구간을 "무동작"으로 세면 루프가 조기 종료된다. 큐 잔량 기반 종료가 이 문제를 피한다.
-- **상위 주체(boss) 앞 보고 대기는 종료 판단에 포함하지 않는다** — 아직 읽지 않은 보고(`pending`)는
-  루프를 유지할 사유가 아니다. **워커 큐만** 본다.
-- 루프 시작 시 이미 모든 워커 큐가 비어 있으면 첫 tick 에서 즉시 종료된다.
+- **A simple no-activity counter ("stop after N consecutive idle ticks") is not recommended.** If the interval in which worker A waits for worker B to finish its implementation is counted as "no activity," the loop stops prematurely. Stopping based on the remaining queue avoids this problem.
+- **Waiting for a report to reach a superior (boss) is not included in the stop decision** — an unread report (`pending`) is not a reason to keep the loop running. Look **only at the worker queues**.
+- If all worker queues are already empty when the loop starts, it stops immediately on the first tick.
 
 ---
 
-## 작업 원칙 (워킹모드 공통)
+## Working Principles (common to working mode)
 
-- **묻지 않고 실행** — 되돌릴 수 있는 작업은 "할까요?" 묻지 말고 바로 진행.
-  파괴적 / 외부 공개 작업만 사전 확인.
-- **코드로 증명** — "될 것 같다"로 끝내지 않는다. 실행하고 PASS/FAIL 로그를 남긴다.
-- **모르면 모른다** — 추측으로 아는 척하지 않는다. 틀린 지적은 즉시 인정·수정.
-- **명령을 정확히 이행** — 지시받은 것을 지시받은 대로. 임의 확장 금지. 요구사항을 빠뜨리지 않는다.
-- **완료를 명시적으로 보고** — 무엇을 했고 어떻게 검증했는지. 실패는 실패라고 로그와 함께 보고한다.
+- **Act without asking** — For reversible work, do not ask "Shall I?"; just proceed. Confirm in advance only for destructive / externally public actions.
+- **Prove with code** — Do not stop at "it should work." Run it and leave a PASS/FAIL log.
+- **Say you don't know when you don't** — Do not pretend to know by guessing. Acknowledge and fix an incorrect claim immediately.
+- **Execute commands exactly** — Do what you were told, as you were told. No arbitrary scope expansion. Do not miss any requirement.
+- **Report completion explicitly** — What you did and how you verified it. Report a failure as a failure, together with the log.
 
 ---
 
-관련 문서: [agent-memory.md](agent-memory.md) · [../README.md](../README.md)
+Related documents: [agent-memory.md](agent-memory.md) · [../README.md](../README.md)

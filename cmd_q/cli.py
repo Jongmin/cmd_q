@@ -1,6 +1,6 @@
-"""cmd_q CLI 진입점.
+"""cmd_q CLI entry point.
 
-설치 후 사용법:
+Usage after installation:
     cmd_q check <agent>
     cmd_q history [days]
     cmd_q search <keyword>
@@ -24,7 +24,7 @@ def main():
 
     if cmd == "check":
         if len(sys.argv) < 3:
-            print("사용법: cmd_q check <agent>")
+            print("Usage: cmd_q check <agent>")
             return 1
         agent = sys.argv[2]
         CommandQueue(agent).print_check()
@@ -46,35 +46,35 @@ def main():
 
     elif cmd == "get":
         if len(sys.argv) < 3:
-            print("사용법: cmd_q get <id>")
+            print("Usage: cmd_q get <id>")
             return 1
         cmd_id = int(sys.argv[2])
         q = CommandQueue("")
         item = q.get(cmd_id)
         if not item:
-            print("명령 #%d 없음" % cmd_id)
+            print("Command #%d not found" % cmd_id)
             return 1
-        print("=== 명령 #%d ===" % item["id"])
+        print("=== Command #%d ===" % item["id"])
         print("  From: %s -> To: %s" % (item["from_agent"], item["to_agent"]))
-        print("  제목: %s" % item["title"])
-        print("  우선순위: %s / 상태: %s" % (item["priority"], item["status"]))
-        print("  생성: %s" % item["created_at"])
+        print("  Title: %s" % item["title"])
+        print("  Priority: %s / Status: %s" % (item["priority"], item["status"]))
+        print("  Created: %s" % item["created_at"])
         if item["completed_at"]:
-            print("  완료: %s" % item["completed_at"])
-        print("\n--- 본문 ---")
+            print("  Completed: %s" % item["completed_at"])
+        print("\n--- Body ---")
         print(item["body"])
         if item["ref_files"]:
-            print("\n--- 참조 파일 ---")
+            print("\n--- Reference files ---")
             for f in item["ref_files"]:
                 print("  - %s" % f)
         result = q.get_result(cmd_id)
         if result:
-            print("\n--- 결과 ---")
-            print("  요약: %s" % result["summary"])
+            print("\n--- Result ---")
+            print("  Summary: %s" % result["summary"])
             if result["detail"]:
                 print(result["detail"])
             if result["findings"]:
-                print("\n  발견사항:")
+                print("\n  Findings:")
                 for f in result["findings"]:
                     print("    [%s] %s — %s:%s" % (
                         f.get("severity", "?"), f.get("title", ""),
@@ -83,10 +83,10 @@ def main():
     elif cmd == "archive":
         d = int(sys.argv[2]) if len(sys.argv) > 2 else 30
         count = CommandQueue("").archive(d)
-        print("%d건 아카이브 완료" % count)
+        print("%d archived" % count)
 
     else:
-        print("알 수 없는 명령: %s" % cmd)
+        print("Unknown command: %s" % cmd)
         _print_usage()
         return 1
 
@@ -95,16 +95,16 @@ def main():
 
 def _print_usage():
     # type: () -> None
-    print("사용법:")
-    print("  cmd_q check <agent>       — 미완료 명령 확인")
-    print("  cmd_q history [days]      — 전체 이력 (기본 7일)")
-    print("  cmd_q search <keyword>    — 키워드 검색")
-    print("  cmd_q stats               — 에이전트별 통계")
-    print("  cmd_q get <id>            — 명령 상세 + 결과")
-    print("  cmd_q archive [days]      — 오래된 완료 건 정리 (기본 30일)")
+    print("Usage:")
+    print("  cmd_q check <agent>       — show pending commands")
+    print("  cmd_q history [days]      — full history (default 7 days)")
+    print("  cmd_q search <keyword>    — search by keyword")
+    print("  cmd_q stats               — per-agent statistics")
+    print("  cmd_q get <id>            — command detail + result")
+    print("  cmd_q archive [days]      — clean up old completed entries (default 30 days)")
     print("")
-    print("DB 경로:")
-    print("  환경변수 CMD_Q_DB 로 지정. 미지정 시 ~/.cmd_q/queue.db.")
+    print("DB path:")
+    print("  Set via the CMD_Q_DB environment variable. Defaults to ~/.cmd_q/queue.db.")
 
 
 if __name__ == "__main__":

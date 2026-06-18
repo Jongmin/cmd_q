@@ -1,4 +1,4 @@
-"""기본 단위 테스트 — 임시 DB 경로로 전 흐름 검증."""
+"""Basic unit tests — verify the full flow using a temporary DB path."""
 
 import os
 import tempfile
@@ -12,7 +12,7 @@ class CommandQueueTest(unittest.TestCase):
         # type: () -> None
         fd, self.db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
-        os.remove(self.db_path)  # _setup_db 이 새로 만들도록
+        os.remove(self.db_path)  # so that _setup_db creates it fresh
 
     def tearDown(self):
         # type: () -> None

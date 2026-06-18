@@ -1,34 +1,34 @@
 # cmd_q
 
-SQLite 기반 에이전트 간 명령 큐. 여러 에이전트 세션이 SQLite 파일을 통해 명령을 주고받는다. WAL 모드로 동시 읽기/쓰기 안전.
+SQLite-based inter-agent command queue. Multiple agent sessions exchange commands through a SQLite file. WAL mode makes concurrent reads/writes safe.
 
-멀티 에이전트 협업을 위한 3개 축으로 구성된다:
+It is organized around three pillars for multi-agent collaboration:
 
-1. **명령 큐** — 에이전트 간 명령 전달 (이 README) · SQLite + WAL
-2. **워킹모드** — 큐를 자율 반복 처리하고 큐가 비면 종료 → [docs/working-mode.md](docs/working-mode.md)
-3. **에이전트 메모리** — 세션 간 유지되는 정체성·역할·선호 → [docs/agent-memory.md](docs/agent-memory.md)
+1. **Command queue** — passing commands between agents (this README) · SQLite + WAL
+2. **Working mode** — autonomously process the queue in a loop and exit when the queue is empty → [docs/working-mode.md](docs/working-mode.md)
+3. **Agent memory** — identity, role, and preferences that persist across sessions → [docs/agent-memory.md](docs/agent-memory.md)
 
-## 설치
+## Installation
 
 ```bash
 pip install git+https://github.com/Jongmin/cmd_q.git
 ```
 
-또는 버전 고정:
+Or pin a version:
 
 ```bash
 pip install "git+https://github.com/Jongmin/cmd_q.git@v0.1.0"
 ```
 
-## DB 경로
+## DB path
 
-우선순위:
+Priority:
 
-1. `CommandQueue(agent, db_path=...)` 인자
-2. 환경변수 `CMD_Q_DB`
-3. `~/.cmd_q/queue.db` (디렉토리 자동 생성)
+1. `CommandQueue(agent, db_path=...)` argument
+2. Environment variable `CMD_Q_DB`
+3. `~/.cmd_q/queue.db` (directory created automatically)
 
-프로젝트마다 다른 DB를 쓰려면 환경변수를 분리한다.
+To use a different DB per project, separate the environment variable.
 
 ```bash
 export CMD_Q_DB=/path/to/project/.cmd_q.db
@@ -41,40 +41,40 @@ from cmd_q import CommandQueue
 
 q = CommandQueue("alice")
 
-# 내 미완료 명령 확인
+# Check my pending commands
 pending = q.check()
 # → [{"id": 27, "from_agent": "bob", "title": "...", "priority": "high", "status": "pending"}, ...]
 
-# 명령 상세
+# Command details
 cmd = q.get(27)
 # → {"id": 27, "body": "...", "ref_files": ["src/test.py"], ...}
 
-# 작업 시작 → 완료
+# Start task → complete
 q.start(27)
 q.complete(27,
-    summary="모든 검증 통과",
-    detail="| # | 항목 | 결과 |\n...",
+    summary="All verifications passed",
+    detail="| # | Item | Result |\n...",
     findings=[
-        {"severity": "P0", "title": "버그 발견", "file": "x.py", "line": 42},
+        {"severity": "P0", "title": "Bug found", "file": "x.py", "line": 42},
     ],
 )
 
-# 다른 에이전트에게 명령 보내기
+# Send a command to another agent
 q.send(
     to="charlie",
-    title="DB 스키마 검토",
-    body="### 수정 내역\n...",
+    title="Review DB schema",
+    body="### Change log\n...",
     priority="high",       # critical, high, medium, low
     ref_files=["src/db/schema.py"],
 )
 
-# 취소
-q.cancel(27, reason="요구사항 변경으로 제거")
+# Cancel
+q.cancel(27, reason="Removed due to requirement change")
 
-# 조회
+# Query
 q.history(days=7)
 q.history(agent="alice")
-q.search("스키마")
+q.search("schema")
 q.get_result(27)
 q.stats()
 ```
@@ -82,63 +82,63 @@ q.stats()
 ## CLI
 
 ```bash
-cmd_q check alice           # 미완료 명령 확인
-cmd_q history 7             # 최근 7일 이력
-cmd_q search "스키마"        # 키워드 검색
-cmd_q stats                 # 에이전트별 통계
-cmd_q get 27                # 명령 상세 + 결과
-cmd_q archive 30            # 30일 지난 완료 건 정리
+cmd_q check alice           # Check pending commands
+cmd_q history 7             # History for the last 7 days
+cmd_q search "schema"       # Keyword search
+cmd_q stats                 # Per-agent statistics
+cmd_q get 27                # Command details + result
+cmd_q archive 30            # Clean up completed items older than 30 days
 ```
 
-## 스키마
+## Schema
 
 ### commands
-| 컬럼 | 타입 | 비고 |
+| Column | Type | Notes |
 |---|---|---|
 | id | INTEGER PK | autoincrement |
-| from_agent | TEXT | 보낸 에이전트 |
-| to_agent | TEXT | 받을 에이전트 |
-| title | TEXT | 제목 |
-| body | TEXT | 본문 (마크다운 권장) |
+| from_agent | TEXT | Sending agent |
+| to_agent | TEXT | Receiving agent |
+| title | TEXT | Title |
+| body | TEXT | Body (Markdown recommended) |
 | priority | TEXT | critical / high / medium / low |
 | status | TEXT | pending / in_progress / completed / cancelled |
-| ref_files | TEXT(JSON) | 관련 파일 경로 리스트 |
-| cancel_reason | TEXT | 취소 사유 |
+| ref_files | TEXT(JSON) | List of related file paths |
+| cancel_reason | TEXT | Cancellation reason |
 | created_at / started_at / completed_at | DATETIME | |
 
 ### results
-| 컬럼 | 타입 | 비고 |
+| Column | Type | Notes |
 |---|---|---|
 | id | INTEGER PK | |
 | command_id | INTEGER FK | commands.id |
-| agent | TEXT | 결과 작성 에이전트 |
-| summary | TEXT | 1-2줄 요약 |
-| detail | TEXT | 상세 (마크다운) |
+| agent | TEXT | Agent that wrote the result |
+| summary | TEXT | 1-2 line summary |
+| detail | TEXT | Details (Markdown) |
 | findings | TEXT(JSON) | `[{severity, title, file, line}, ...]` |
 
-## 사용 규칙 가이드 (각 프로젝트에서 채택)
+## Usage rules guide (adopt in each project)
 
-프로젝트 규칙 파일(예: AGENTS.md)에 다음을 명시할 것:
+State the following in your project rules file (e.g., AGENTS.md):
 
-- 세션 시작 시 `q.check()` 실행하여 내 미완료 명령 확인
-- 다른 에이전트에게 작업 요청 시 `q.send()` 사용
-- 검토/검증 완료 후 반드시 `q.complete()` 호출
-- "X에게 Y 요청" 지시를 받으면 → 방금 한 작업을 정리해 `q.send()` 의 body 에 포함
+- At session start, run `q.check()` to check my pending commands
+- Use `q.send()` when requesting work from another agent
+- Always call `q.complete()` after finishing a review/verification
+- When you receive an instruction like "ask X to do Y" → summarize the work you just did and include it in the body of `q.send()`
 
-## 워킹모드와 에이전트 메모리
+## Working mode and agent memory
 
-명령 큐는 전달 메커니즘일 뿐이다. 실제 멀티 에이전트 운영은 두 문서가 함께 정의한다:
+The command queue is only a delivery mechanism. Actual multi-agent operation is defined by two documents together:
 
-- **[docs/working-mode.md](docs/working-mode.md)** — 큐 자율 처리 루프, 세션 시작 프로토콜,
-  상태 전이 함정(`start` 없이 `complete` 하면 무음 NOOP), 큐 잔량 기반 자동 종료.
-- **[docs/agent-memory.md](docs/agent-memory.md)** — 세션 간 유지 메모리의 파일 구조,
-  frontmatter 스키마, 4가지 타입(user / feedback / project / reference), `MEMORY.md` 인덱스,
-  역할 기반 에이전트 정체성(개발 / 검증 분리 패턴).
+- **[docs/working-mode.md](docs/working-mode.md)** — autonomous queue processing loop, session start protocol,
+  state transition pitfalls (calling `complete` without `start` is a silent NOOP), automatic shutdown based on remaining queue volume.
+- **[docs/agent-memory.md](docs/agent-memory.md)** — file structure of memory that persists across sessions,
+  frontmatter schema, four types (user / feedback / project / reference), `MEMORY.md` index,
+  role-based agent identity (development / verification separation pattern).
 
-에이전트 정체성 템플릿:
+Agent identity templates:
 [examples/agents/developer-agent.md](examples/agents/developer-agent.md) ·
 [examples/agents/verifier-agent.md](examples/agents/verifier-agent.md)
 
-## 라이선스
+## License
 
 MIT

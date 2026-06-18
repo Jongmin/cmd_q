@@ -1,12 +1,12 @@
-"""에이전트 공유 명령 큐 (SQLite + WAL).
+"""Shared agent command queue (SQLite + WAL).
 
-여러 에이전트 세션이 SQLite를 통해 명령을 주고받는 구조.
-WAL 모드로 동시 읽기/쓰기 안전.
+A structure where multiple agent sessions exchange commands through SQLite.
+WAL mode makes concurrent reads/writes safe.
 
-DB 경로 결정 우선순위:
-    1) CommandQueue(agent, db_path=...) 인자
-    2) 환경변수 CMD_Q_DB
-    3) ~/.cmd_q/queue.db (디렉토리 자동 생성)
+DB path resolution priority:
+    1) CommandQueue(agent, db_path=...) argument
+    2) CMD_Q_DB environment variable
+    3) ~/.cmd_q/queue.db (directory created automatically)
 """
 
 import json
@@ -18,13 +18,13 @@ from typing import Any, Dict, List, Optional
 VALID_PRIORITIES = ("critical", "high", "medium", "low")
 VALID_STATUSES = ("pending", "in_progress", "completed", "cancelled")
 
-# 현재 스키마 버전 — 마이그레이션 안전성 확보용
+# Current schema version — for migration safety
 SCHEMA_VERSION = 1
 
 
 def _default_db_path():
     # type: () -> str
-    """DB 경로 결정 (환경변수 → 홈 디렉터리 폴백)."""
+    """Resolve the DB path (environment variable -> home directory fallback)."""
     env = os.environ.get("CMD_Q_DB")
     if env:
         return env
@@ -100,14 +100,15 @@ def _setup_db(db_path):
 
 
 class CommandQueue:
-    """에이전트별 명령 큐.
+    """Per-agent command queue.
 
     Parameters
     ----------
     agent_name : str
-        이 인스턴스가 사용할 에이전트 이름. 자유 문자열 — 검증하지 않는다.
+        The agent name this instance uses. Free-form string — not validated.
     db_path : Optional[str]
-        DB 파일 경로. 미지정 시 환경변수 CMD_Q_DB 또는 ~/.cmd_q/queue.db.
+        DB file path. If unspecified, the CMD_Q_DB environment variable or
+        ~/.cmd_q/queue.db.
     """
 
     def __init__(self, agent_name, db_path=None):
@@ -121,12 +122,12 @@ class CommandQueue:
         return _get_conn(self.db_path)
 
     # ──────────────────────────────────────────
-    # 명령 확인
+    # Check commands
     # ──────────────────────────────────────────
 
     def check(self):
         # type: () -> List[Dict]
-        """내 미완료 명령 조회 (pending + in_progress)."""
+        """Query my unfinished commands (pending + in_progress)."""
         conn = self._conn()
         rows = conn.execute(
             "SELECT id, from_agent, title, priority, status, created_at "
@@ -146,7 +147,7 @@ class CommandQueue:
 
     def get(self, command_id):
         # type: (int) -> Optional[Dict]
-        """명령 상세 조회."""
+        """Query command details."""
         conn = self._conn()
         row = conn.execute(
             "SELECT * FROM commands WHERE id = ?", (command_id,)
@@ -159,12 +160,12 @@ class CommandQueue:
         return None
 
     # ──────────────────────────────────────────
-    # 명령 보내기
+    # Send commands
     # ──────────────────────────────────────────
 
     def send(self, to, title, body="", priority="medium", ref_files=None):
         # type: (str, str, str, str, Optional[List[str]]) -> int
-        """다른 에이전트에게 명령 보내기."""
+        """Send a command to another agent."""
         if priority not in VALID_PRIORITIES:
             raise ValueError("priority must be one of: %s" % ", ".join(VALID_PRIORITIES))
         conn = self._conn()
@@ -181,12 +182,12 @@ class CommandQueue:
         return cmd_id
 
     # ──────────────────────────────────────────
-    # 상태 변경
+    # Status changes
     # ──────────────────────────────────────────
 
     def start(self, command_id):
         # type: (int) -> None
-        """명령 작업 시작."""
+        """Start working on a command."""
         conn = self._conn()
         conn.execute(
             "UPDATE commands SET status = 'in_progress', started_at = CURRENT_TIMESTAMP "
@@ -198,7 +199,7 @@ class CommandQueue:
 
     def complete(self, command_id, summary, detail="", findings=None):
         # type: (int, str, str, Optional[List[Dict]]) -> int
-        """명령 완료 + 결과 기록."""
+        """Complete a command and record the result."""
         conn = self._conn()
         c = conn.cursor()
 
@@ -221,7 +222,7 @@ class CommandQueue:
 
     def cancel(self, command_id, reason=""):
         # type: (int, str) -> None
-        """명령 취소."""
+        """Cancel a command."""
         conn = self._conn()
         conn.execute(
             "UPDATE commands SET status = 'cancelled', cancel_reason = ?, "
@@ -232,12 +233,12 @@ class CommandQueue:
         conn.close()
 
     # ──────────────────────────────────────────
-    # 조회
+    # Queries
     # ──────────────────────────────────────────
 
     def history(self, days=7, agent=None):
         # type: (int, Optional[str]) -> List[Dict]
-        """이력 조회. agent 지정 시 해당 에이전트가 보낸/받은 것."""
+        """Query history. If agent is given, what that agent sent/received."""
         conn = self._conn()
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -263,7 +264,7 @@ class CommandQueue:
 
     def search(self, keyword):
         # type: (str) -> List[Dict]
-        """명령 + 결과 키워드 검색."""
+        """Keyword search over commands and results."""
         conn = self._conn()
         pattern = "%{}%".format(keyword)
 
@@ -295,7 +296,7 @@ class CommandQueue:
 
     def get_result(self, command_id):
         # type: (int) -> Optional[Dict]
-        """명령의 결과 조회."""
+        """Query the result of a command."""
         conn = self._conn()
         row = conn.execute(
             "SELECT * FROM results WHERE command_id = ? "
@@ -310,12 +311,12 @@ class CommandQueue:
         return None
 
     # ──────────────────────────────────────────
-    # 통계
+    # Statistics
     # ──────────────────────────────────────────
 
     def stats(self):
         # type: () -> List[Dict]
-        """에이전트별 통계."""
+        """Per-agent statistics."""
         conn = self._conn()
         rows = conn.execute(
             "SELECT to_agent as agent, status, COUNT(*) as cnt "
@@ -326,12 +327,12 @@ class CommandQueue:
         return [dict(r) for r in rows]
 
     # ──────────────────────────────────────────
-    # 정리
+    # Cleanup
     # ──────────────────────────────────────────
 
     def archive(self, days=30):
         # type: (int) -> int
-        """완료/취소된 오래된 명령을 archive 테이블로 이동."""
+        """Move old completed/cancelled commands to the archive tables."""
         conn = self._conn()
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -384,17 +385,17 @@ class CommandQueue:
         return len(old_ids)
 
     # ──────────────────────────────────────────
-    # 출력 헬퍼
+    # Output helpers
     # ──────────────────────────────────────────
 
     def print_check(self):
         # type: () -> None
-        """미완료 명령 출력."""
+        """Print unfinished commands."""
         pending = self.check()
         if not pending:
-            print("[%s] 미완료 명령 없음" % self.agent)
+            print("[%s] No unfinished commands" % self.agent)
             return
-        print("[%s] 미완료 명령 %d건:" % (self.agent, len(pending)))
+        print("[%s] %d unfinished command(s):" % (self.agent, len(pending)))
         for cmd in pending:
             print("  #%d [%s] %s ← %s (%s)" % (
                 cmd["id"], cmd["priority"].upper(), cmd["title"],
@@ -402,10 +403,10 @@ class CommandQueue:
 
     def print_history(self, days=7):
         # type: (int) -> None
-        """전체 이력 출력."""
+        """Print the full history."""
         items = self.history(days)
         if not items:
-            print("최근 %d일 명령 없음" % days)
+            print("No commands in the last %d day(s)" % days)
             return
         status_icon = {
             "pending": "[P]", "in_progress": "[R]",
@@ -424,14 +425,14 @@ class CommandQueue:
 
     def print_stats(self):
         # type: () -> None
-        """에이전트별 통계 출력."""
+        """Print per-agent statistics."""
         stats = self.stats()
         if not stats:
-            print("데이터 없음")
+            print("No data")
             return
         current_agent = ""
         for s in stats:
             if s["agent"] != current_agent:
                 current_agent = s["agent"]
                 print("\n[%s]" % current_agent)
-            print("  %s: %d건" % (s["status"], s["cnt"]))
+            print("  %s: %d" % (s["status"], s["cnt"]))
